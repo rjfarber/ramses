@@ -492,8 +492,15 @@ def generate_fname(nout,ftype="",cpuid=1):
 # - threshold   : relative value below which a vector component is set to zero
 # - norm_min    : minimum value for norm, to protect against null vectors
 # - min_variance: if the data differs by less than this value from the average value, it is set to the average
-def check_solution(data,test_name,tolerance=None,threshold=2.0e-14,norm_min=1.0e-30,min_variance=1.0e-14,overwrite=False):
+# - rdir: path to read the reference data
+# - wdir: path where files will get written to
+def check_solution(data,test_name,tolerance=None,threshold=2.0e-14,norm_min=1.0e-30,min_variance=1.0e-14,overwrite=False,rdir="",wdir=""):
+    if rdir != "" and rdir[-1] != "/":
+        rdir += "/"
 
+    if wdir != "" and wdir[-1] != "/":
+        wdir += "/"
+    
     var_tol = {"all":3.0e-13}
     try:
         for key in tolerance.keys():
@@ -502,10 +509,9 @@ def check_solution(data,test_name,tolerance=None,threshold=2.0e-14,norm_min=1.0e
         pass
 
     # Write dummy file to avoid latex errors
-    tex_file = open(test_name+".tex", "w")
-    tex_file.write(" \n")
-    tex_file.close()
-
+    with open(wdir+test_name+".tex", "w") as tex_file:
+        tex_file.write(" \n")
+    
     # Find vectors and normalize components
     norms = dict()
     permutations = {"_x":["_y","_z"],"_y":["_x","_z"],"_z":["_x","_y"]}
@@ -559,15 +565,14 @@ def check_solution(data,test_name,tolerance=None,threshold=2.0e-14,norm_min=1.0e
     # Overwrite reference solution =====================
     if overwrite:
         print("WARNING! Over-writing reference solution")
-        ref_file = open(test_name+"-ref.dat", "w")
-        for key in sorted(data.keys()):
-           ref_file.write("%s : %.16e\n" % (key,sol[key]))
-        ref_file.close()
+        with open(wdir+test_name+"-ref.dat", "w") as ref_file:
+            for key in sorted(data.keys()):
+               ref_file.write("%s : %.16e\n" % (key,sol[key]))
     # ==================================================
 
     # Read reference solution
     ref = dict()
-    with open(test_name+"-ref.dat") as f:
+    with open(rdir+test_name+"-ref.dat") as f:
         content = f.readlines()
     for line in content:
         sp = line.split(":")
@@ -582,83 +587,82 @@ def check_solution(data,test_name,tolerance=None,threshold=2.0e-14,norm_min=1.0e
         ok = False
 
     # Write error table to tex file
-    tex_file = open(test_name+".tex", "w")
-    #tex_file.write("\documentclass[12pt]{article}\n")
-    #tex_file.write("\usepackage{graphicx,color}\n")
-    #tex_file.write("\usepackage[colorlinks=true,linkcolor=blue]{hyperref}\n")
-    #tex_file.write("\\begin{document}\n")
-    tex_file.write("\\begin{table}[ht]\n")
-    tex_file.write("\\scriptsize\n")
-    tex_file.write("\\centering\n")
-    tex_file.write("\\caption{"+test_name+" error summary}\n")
-    tex_file.write("\\begin{tabular}{|l|l|l|l|l|}\n")
-    tex_file.write("\\hline\n")
-    tex_file.write("Variable & This run & Reference & Error & Tolerance\\\\\n")
-    tex_file.write("\\hline\n")
-
-    all_keys = dict()
-    for key in ref.keys():
-        all_keys[key] = 1
-    for key in sol.keys():
-        all_keys[key] = 1
-
-    # Compute errors
-    for key in sorted(all_keys.keys()):
-
-        try:
-            tol = var_tol[key]
-        except KeyError:
-            tol = var_tol["all"]
-
-        try:
-            this_sol = sol[key]
-        except KeyError:
-            this_sol = None
-        try:
-            this_ref = ref[key]
-        except KeyError:
-            this_ref = None
-
-        if this_sol is not None and this_ref is not None:
-            if this_sol == this_ref == 0.0:
-                error = 0.0
-            elif this_sol == 0.0 or this_ref == 0.0:
-                error = np.inf
+    with open(wdir+test_name+".tex", "w") as tex_file:
+        #tex_file.write("\documentclass[12pt]{article}\n")
+        #tex_file.write("\usepackage{graphicx,color}\n")
+        #tex_file.write("\usepackage[colorlinks=true,linkcolor=blue]{hyperref}\n")
+        #tex_file.write("\\begin{document}\n")
+        tex_file.write("\\begin{table}[ht]\n")
+        tex_file.write("\\scriptsize\n")
+        tex_file.write("\\centering\n")
+        tex_file.write("\\caption{"+test_name+" error summary}\n")
+        tex_file.write("\\begin{tabular}{|l|l|l|l|l|}\n")
+        tex_file.write("\\hline\n")
+        tex_file.write("Variable & This run & Reference & Error & Tolerance\\\\\n")
+        tex_file.write("\\hline\n")
+    
+        all_keys = dict()
+        for key in ref.keys():
+            all_keys[key] = 1
+        for key in sol.keys():
+            all_keys[key] = 1
+    
+        # Compute errors
+        for key in sorted(all_keys.keys()):
+    
+            try:
+                tol = var_tol[key]
+            except KeyError:
+                tol = var_tol["all"]
+    
+            try:
+                this_sol = sol[key]
+            except KeyError:
+                this_sol = None
+            try:
+                this_ref = ref[key]
+            except KeyError:
+                this_ref = None
+    
+            if this_sol is not None and this_ref is not None:
+                if this_sol == this_ref == 0.0:
+                    error = 0.0
+                elif this_sol == 0.0 or this_ref == 0.0:
+                    error = np.inf
+                else:
+                    error = abs(this_sol-this_ref)/min(abs(this_sol),abs(this_ref))
             else:
-                error = abs(this_sol-this_ref)/min(abs(this_sol),abs(this_ref))
-        else:
-            error = np.Inf
-
-        if error > tol:
-            ok = False
-            output = "\\textcolor{red}{%s} & "%key.replace("_"," ")
-            if this_sol is None:
-                output += "\\textcolor{red}{-} & "
+                error = np.Inf
+    
+            if error > tol:
+                ok = False
+                output = "\\textcolor{red}{%s} & "%key.replace("_"," ")
+                if this_sol is None:
+                    output += "\\textcolor{red}{-} & "
+                else:
+                    output += "\\textcolor{red}{%.16e} & "%this_sol
+                if this_ref is None:
+                    output += "\\textcolor{red}{-} & "
+                else:
+                    output += "\\textcolor{red}{%.16e} & "%this_ref
+                output += "\\textcolor{red}{%.16e} & \\textcolor{red}{%.16e} \\\\\n" %(error,tol)
             else:
-                output += "\\textcolor{red}{%.16e} & "%this_sol
-            if this_ref is None:
-                output += "\\textcolor{red}{-} & "
-            else:
-                output += "\\textcolor{red}{%.16e} & "%this_ref
-            output += "\\textcolor{red}{%.16e} & \\textcolor{red}{%.16e} \\\\\n" %(error,tol)
-        else:
-            output = "%s & "%key.replace("_"," ")
-            if this_sol is None:
-                output += "- & "
-            else:
-                output += "%.16e & "%this_sol
-            if this_ref is None:
-                output += "- & "
-            else:
-                output += "%.16e & "%this_ref
-            output += "%.16e & %.16e\\\\\n" %(error,tol)
-        tex_file.write(output)
-
-    tex_file.write("\\hline\n")
-    tex_file.write("\\end{tabular}\n")
-    tex_file.write("\\end{table}\n")
-    #tex_file.write("\\end{document}\n")
-    tex_file.close()
+                output = "%s & "%key.replace("_"," ")
+                if this_sol is None:
+                    output += "- & "
+                else:
+                    output += "%.16e & "%this_sol
+                if this_ref is None:
+                    output += "- & "
+                else:
+                    output += "%.16e & "%this_ref
+                output += "%.16e & %.16e\\\\\n" %(error,tol)
+            tex_file.write(output)
+    
+        tex_file.write("\\hline\n")
+        tex_file.write("\\end{tabular}\n")
+        tex_file.write("\\end{table}\n")
+        #tex_file.write("\\end{document}\n")
 
     # Print message if successful
     if ok:
